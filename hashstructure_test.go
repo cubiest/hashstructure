@@ -441,6 +441,12 @@ func TestHash_equalSet(t *testing.T) {
 			Test{Name: "foo", Friends: []string{"foo", "bar"}},
 			true,
 		},
+
+		{
+			Test{Name: "foo", Friends: []string{"foo", "bar", "bar"}},
+			Test{Name: "foo", Friends: []string{"foo", "baz", "baz"}},
+			false,
+		},
 	}
 
 	for _, tc := range cases {

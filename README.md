@@ -1,4 +1,4 @@
-# hashstructure [![GoDoc](https://godoc.org/github.com/mitchellh/hashstructure?status.svg)](https://godoc.org/github.com/mitchellh/hashstructure)
+# hashstructure [![GoDoc](https://godoc.org/github.com/cubiest/hashstructure?status.svg)](https://godoc.org/github.com/cubiest/hashstructure)
 
 hashstructure is a Go library for creating a unique hash value
 for arbitrary values in Go.
@@ -9,28 +9,28 @@ sending data across the network, caching values locally (de-dup), and so on.
 
 ## Features
 
-  * Hash any arbitrary Go value, including complex types.
+* Hash any arbitrary Go value, including complex types.
 
-  * Tag a struct field to ignore it and not affect the hash value.
+* Tag a struct field to ignore it and not affect the hash value.
 
-  * Tag a slice type struct field to treat it as a set where ordering
-    doesn't affect the hash code but the field itself is still taken into
-    account to create the hash value.
+* Tag a slice type struct field to treat it as a set where ordering
+  doesn't affect the hash code but the field itself is still taken into
+  account to create the hash value.
 
-  * Optionally, specify a custom hash function to optimize for speed, collision
+* Optionally, specify a custom hash function to optimize for speed, collision
     avoidance for your data set, etc.
 
-  * Optionally, hash the output of `.String()` on structs that implement fmt.Stringer,
-    allowing effective hashing of time.Time
+* Optionally, hash the output of `.String()` on structs that implement fmt.Stringer,
+  allowing effective hashing of time.Time
 
-  * Optionally, override the hashing process by implementing `Hashable`.
+* Optionally, override the hashing process by implementing `Hashable`.
 
 ## Installation
 
 Standard `go get`:
 
 ```
-$ go get github.com/mitchellh/hashstructure/v2
+$ go get github.com/cubiest/hashstructure/v2
 ```
 
 **Note on v2:** It is highly recommended you use the "v2" release since this
@@ -44,27 +44,31 @@ When using v2+, you can still generate weaker v1 hashes by using the
 
 ## Usage & Example
 
-For usage and examples see the [Godoc](http://godoc.org/github.com/mitchellh/hashstructure).
+For usage and examples see the [Godoc](http://godoc.org/github.com/cubiest/hashstructure).
 
 A quick code example is shown below:
 
 ```go
 type ComplexStruct struct {
-    Name     string
-    Age      uint
-    Metadata map[string]interface{}
+    Name     string                 `hash:"name"`
+    Age      uint                   `hash:"age"`
+    Metadata map[string]interface{} `hash:"meta"`
+
+    Aux *ComplexStruct `hash:"-"` // Ingore for hashing.
 }
 
 v := ComplexStruct{
-    Name: "mitchellh",
-    Age:  64,
+    Name: "Lucy-May",
+    Age:  7,
     Metadata: map[string]interface{}{
-        "car":      true,
-        "location": "California",
-        "siblings": []string{"Bob", "John"},
+        "pets":      true,
+        "location": "Australia",
+        "siblings": []string{"Kate", "Clara", "Tob", "Ben"},
     },
 }
 
+// By default, "hash" is expected for the tag name,
+// but can be overridden using hashstructure.HashOptions.TagName.
 hash, err := hashstructure.Hash(v, hashstructure.FormatV2, nil)
 if err != nil {
     panic(err)
@@ -72,5 +76,5 @@ if err != nil {
 
 fmt.Printf("%d", hash)
 // Output:
-// 2307517237273902113
+// 1065311810974221966
 ```

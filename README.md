@@ -25,6 +25,9 @@ sending data across the network, caching values locally (de-dup), and so on.
 
 * Optionally, override the hashing process by implementing `Hashable`.
 
+* Optionally, perform compatibility normalization on strings.
+
+
 ## Installation
 
 Standard `go get`:

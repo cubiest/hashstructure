@@ -7,6 +7,8 @@ import (
 	"hash/fnv"
 	"reflect"
 	"time"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // HashOptions are options that are available for hashing.
@@ -37,6 +39,10 @@ type HashOptions struct {
 	// precedence (meaning that if the type doesn't implement fmt.Stringer, we
 	// panic)
 	UseStringer bool
+
+	// NFKC will do a compatibility normalization of any string. For example,
+	// "ﬂ" and "fl" will result in equal hashes.
+	NFKC bool
 }
 
 // Format specifies the hashing process used. Different formats typically
@@ -72,29 +78,28 @@ const (
 //
 // Notes on the value:
 //
-//   * Unexported fields on structs are ignored and do not affect the
+//   - Unexported fields on structs are ignored and do not affect the
 //     hash value.
 //
-//   * Adding an exported field to a struct with the zero value will change
+//   - Adding an exported field to a struct with the zero value will change
 //     the hash value.
 //
 // For structs, the hashing can be controlled using tags. For example:
 //
-//    struct {
-//        Name string
-//        UUID string `hash:"ignore"`
-//    }
+//	struct {
+//	    Name string
+//	    UUID string `hash:"ignore"`
+//	}
 //
 // The available tag values are:
 //
-//   * "ignore" or "-" - The field will be ignored and not affect the hash code.
+//   - "ignore" or "-" - The field will be ignored and not affect the hash code.
 //
-//   * "set" - The field will be treated as a set, where ordering doesn't
-//             affect the hash code. This only works for slices.
+//   - "set" - The field will be treated as a set, where ordering doesn't
+//     affect the hash code. This only works for slices.
 //
-//   * "string" - The field will be hashed as a string, only works when the
-//                field implements fmt.Stringer
-//
+//   - "string" - The field will be hashed as a string, only works when the
+//     field implements fmt.Stringer
 func Hash(v interface{}, format Format, opts *HashOptions) (uint64, error) {
 	// Validate our format
 	if format <= formatInvalid || format >= formatMax {
@@ -124,6 +129,7 @@ func Hash(v interface{}, format Format, opts *HashOptions) (uint64, error) {
 		ignorezerovalue: opts.IgnoreZeroValue,
 		sets:            opts.SlicesAsSets,
 		stringer:        opts.UseStringer,
+		nfkc:            opts.NFKC,
 	}
 	return w.visit(reflect.ValueOf(v), nil)
 }
@@ -136,6 +142,7 @@ type walker struct {
 	ignorezerovalue bool
 	sets            bool
 	stringer        bool
+	nfkc            bool
 }
 
 type visitOpts struct {
@@ -331,7 +338,11 @@ func (w *walker) visit(v reflect.Value, opts *visitOpts) (uint64, error) {
 				// if string is set, use the string value
 				if tag == "string" || w.stringer {
 					if impl, ok := innerV.Interface().(fmt.Stringer); ok {
-						innerV = reflect.ValueOf(impl.String())
+						if w.nfkc {
+							innerV = reflect.ValueOf(nfkcNormalize([]byte(impl.String())))
+						} else {
+							innerV = reflect.ValueOf(impl.String())
+						}
 					} else if tag == "string" {
 						// We only show this error if the tag explicitly
 						// requests a stringer.
@@ -427,7 +438,11 @@ func (w *walker) visit(v reflect.Value, opts *visitOpts) (uint64, error) {
 	case reflect.String:
 		// Directly hash
 		w.h.Reset()
-		_, err := w.h.Write([]byte(v.String()))
+		s := []byte(v.String())
+		if w.nfkc {
+			s = nfkcNormalize(s)
+		}
+		_, err := w.h.Write(s)
 		return w.h.Sum64(), err
 
 	default:
@@ -464,11 +479,11 @@ func hashUpdateUnordered(a, b uint64) uint64 {
 // hashUpdateUnordered can effectively cancel out a previous change to the hash
 // result if the same hash value appears later on. For example, consider:
 //
-//   hashUpdateUnordered(hashUpdateUnordered("A", "B"), hashUpdateUnordered("A", "C")) =
-//   H("A") ^ H("B")) ^ (H("A") ^ H("C")) =
-//   (H("A") ^ H("A")) ^ (H("B") ^ H(C)) =
-//   H(B) ^ H(C) =
-//   hashUpdateUnordered(hashUpdateUnordered("Z", "B"), hashUpdateUnordered("Z", "C"))
+//	hashUpdateUnordered(hashUpdateUnordered("A", "B"), hashUpdateUnordered("A", "C")) =
+//	H("A") ^ H("B")) ^ (H("A") ^ H("C")) =
+//	(H("A") ^ H("A")) ^ (H("B") ^ H(C)) =
+//	H(B) ^ H(C) =
+//	hashUpdateUnordered(hashUpdateUnordered("Z", "B"), hashUpdateUnordered("Z", "C"))
 //
 // hashFinishUnordered "hardens" the result, so that encountering partially
 // overlapping input data later on in a different context won't cancel out.
@@ -491,3 +506,11 @@ const (
 	visitFlagInvalid visitFlag = iota
 	visitFlagSet               = iota << 1
 )
+
+// nfkcNormalize does compatibility normalization using NFKC, i.e. decomposing ligatures.
+func nfkcNormalize(s []byte) []byte {
+	if !norm.NFKC.IsNormal(s) {
+		return norm.NFKC.Bytes(s)
+	}
+	return s
+}

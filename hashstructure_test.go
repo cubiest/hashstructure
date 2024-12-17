@@ -65,16 +65,18 @@ func TestHash_identity(t *testing.T) {
 	}
 }
 
-func TestHash_equal(t *testing.T) {
-	type testFoo struct{ Name string }
-	type testBar struct{ Name string }
+type oneTwoMatch struct {
+	One, Two interface{}
+	Match    bool
+}
 
+type testFoo struct{ Name string }
+type testBar struct{ Name string }
+
+func getDefaultOneTwoMatchTestCases() []oneTwoMatch {
 	now := time.Now()
 
-	cases := []struct {
-		One, Two interface{}
-		Match    bool
-	}{
+	return []oneTwoMatch{
 		{
 			map[string]string{"foo": "bar"},
 			map[interface{}]string{"foo": "bar"},
@@ -167,6 +169,10 @@ func TestHash_equal(t *testing.T) {
 			true,
 		},
 	}
+}
+
+func TestHash_equal(t *testing.T) {
+	cases := getDefaultOneTwoMatchTestCases()
 
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -178,6 +184,46 @@ func TestHash_equal(t *testing.T) {
 			}
 			t.Logf("Hashing: %#v", tc.Two)
 			two, err := Hash(tc.Two, testFormat, nil)
+			t.Logf("Result: %d", two)
+			if err != nil {
+				t.Fatalf("Failed to hash %#v: %s", tc.Two, err)
+			}
+
+			// Zero is always wrong
+			if one == 0 {
+				t.Fatalf("zero hash: %#v", tc.One)
+			}
+
+			// Compare
+			if (one == two) != tc.Match {
+				t.Fatalf("bad, expected: %#v\n\n%#v\n\n%#v", tc.Match, tc.One, tc.Two)
+			}
+		})
+	}
+}
+
+func TestHash_equal_nfkc(t *testing.T) {
+	cases := getDefaultOneTwoMatchTestCases()
+	cases = append(cases, oneTwoMatch{ // Ligature test.
+		"Süﬂe in weiß",
+		"Süfle in weiß",
+		true,
+	})
+
+	opts := &HashOptions{
+		NFKC: true,
+	}
+
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			t.Logf("Hashing: %#v", tc.One)
+			one, err := Hash(tc.One, testFormat, opts)
+			t.Logf("Result: %d", one)
+			if err != nil {
+				t.Fatalf("Failed to hash %#v: %s", tc.One, err)
+			}
+			t.Logf("Hashing: %#v", tc.Two)
+			two, err := Hash(tc.Two, testFormat, opts)
 			t.Logf("Result: %d", two)
 			if err != nil {
 				t.Fatalf("Failed to hash %#v: %s", tc.Two, err)
